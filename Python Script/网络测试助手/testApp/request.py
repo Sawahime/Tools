@@ -10,7 +10,7 @@ import tkinter as tk
 class BrowserSimulatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("浏览器模拟访问工具")
+        self.root.title("网络测试工具")
         self.root.geometry("1000x800")
 
         # 设置日志
@@ -88,12 +88,55 @@ class BrowserSimulatorApp:
         html_frame = ttk.LabelFrame(content_frame, text="HTML内容", padding="10")
         html_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
+        # 创建HTML内容显示区域（带行号）
+        html_container = ttk.Frame(html_frame)
+        html_container.pack(fill=tk.BOTH, expand=True)
+
+        # 行号显示区域
+        self.line_numbers = tk.Text(
+            html_container,
+            width=8,  # 行号区域宽度
+            padx=3,
+            takefocus=0,
+            border=0,
+            state='disabled',
+            wrap='none',
+            font=('Consolas', 10),
+            bg='#f0f0f0',
+            fg='#666666',
+            cursor='arrow'  # 设置鼠标样式
+        )
+        self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
+
+        # HTML内容显示区域
         self.html_text = scrolledtext.ScrolledText(
-            html_frame,
+            html_container,
             wrap=tk.WORD,
             font=('Consolas', 10)  # 使用等宽字体更好显示HTML
         )
-        self.html_text.pack(fill=tk.BOTH, expand=True)
+        self.html_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # 绑定滚动事件，使行号和内容同步滚动
+        # 绑定滚动条事件
+        scrollbar = self.html_text.vbar
+        scrollbar.config(command=self.on_scrollbar_move)
+
+        # 绑定鼠标滚轮事件
+        self.html_text.bind('<MouseWheel>', self.on_html_scroll)
+        self.html_text.bind('<Button-4>', self.on_html_scroll)
+        self.html_text.bind('<Button-5>', self.on_html_scroll)
+
+        # 绑定键盘事件
+        self.html_text.bind('<Up>', self.on_html_scroll)
+        self.html_text.bind('<Down>', self.on_html_scroll)
+        self.html_text.bind('<Prior>', self.on_html_scroll)  # Page Up
+        self.html_text.bind('<Next>', self.on_html_scroll)   # Page Down
+        self.html_text.bind('<Home>', self.on_html_scroll)
+        self.html_text.bind('<End>', self.on_html_scroll)
+
+        # 绑定文本变化事件
+        self.html_text.bind('<Key>', self.on_html_change)
+        self.html_text.bind('<Button-1>', self.on_html_change)
 
         # 定时更新日志显示
         self.update_log_display()
@@ -143,6 +186,8 @@ class BrowserSimulatorApp:
 
                 # 显示HTML内容
                 self.html_text.insert(tk.END, response.text)
+                # 更新行号
+                self.update_line_numbers()
 
             except requests.exceptions.RequestException as e:
                 self.logger.error(f"访问失败: {str(e)}")
@@ -164,10 +209,6 @@ class BrowserSimulatorApp:
         self.log_stream.seek(0)
         self.log_text.delete(1.0, tk.END)
 
-    def clear_html(self):
-        """清除HTML内容"""
-        self.html_text.delete(1.0, tk.END)
-
     def save_log(self):
         """保存日志到文件"""
         try:
@@ -188,6 +229,54 @@ class BrowserSimulatorApp:
         except Exception as e:
             self.logger.error(f"保存日志失败: {str(e)}")
             messagebox.showerror("错误", f"保存日志失败: {str(e)}")
+
+    def clear_html(self):
+        """清除HTML内容"""
+        self.html_text.delete(1.0, tk.END)
+        self.update_line_numbers()
+
+    def update_line_numbers(self):
+        """更新行号显示"""
+        # 获取HTML文本的行数
+        line_count = int(self.html_text.index('end-1c').split('.')[0])
+
+        # 生成行号文本
+        line_numbers_text = '\n'.join(str(i) for i in range(1, line_count))
+
+        # 更新行号显示
+        self.line_numbers.config(state='normal')
+        self.line_numbers.delete(1.0, tk.END)
+        self.line_numbers.insert(1.0, line_numbers_text)
+        self.line_numbers.config(state='disabled')
+
+    def on_scrollbar_move(self, *args):
+        """处理滚动条移动事件"""
+        # 先执行原始的滚动操作
+        self.html_text.yview(*args)
+        # 立即同步行号滚动
+        self.sync_line_numbers()
+
+    def on_html_scroll(self, event):
+        """处理HTML文本滚动事件，同步行号滚动"""
+        # 使用after方法确保在滚动完成后立即同步
+        self.root.after(1, self.sync_line_numbers)
+
+    def on_html_change(self, event=None):
+        """处理HTML文本变化事件，延迟更新行号"""
+        # 延迟更新行号，避免频繁更新
+        self.root.after_idle(self.update_line_numbers)
+        self.root.after_idle(self.sync_line_numbers)
+
+    def sync_line_numbers(self):
+        """同步行号滚动位置"""
+        try:
+            # 获取HTML文本的当前滚动位置
+            top, bottom = self.html_text.yview()
+            # 同步行号滚动
+            self.line_numbers.yview_moveto(top)
+        except tk.TclError:
+            # 忽略可能的Tcl错误
+            pass
 
 
 def main():
