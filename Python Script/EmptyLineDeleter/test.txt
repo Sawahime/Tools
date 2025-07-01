@@ -1,0 +1,931 @@
+我在学习使用netadaptercx开发Windows网卡驱动。
+头文件：
+class DeviceContext {
+public:
+	DeviceContext(
+		_In_ WDFDEVICE WdfDevice
+	) :
+		m_WdfDevice(WdfDevice)
+	{
+		LOG_TRACE("Parameter constructor call \n");
+	}
+	~DeviceContext() {
+		LOG_TRACE("Destructor call \n");
+	}
+	WDFDEVICE GetWdfDevice() CONST {
+		return m_WdfDevice;
+	}
+	VOID SetWdfDevice(WDFDEVICE device) {
+		m_WdfDevice = device;
+	}
+	NTSTATUS CreateDmaEnabler() {
+		WDF_DMA_ENABLER_CONFIG config;
+		WDF_DMA_ENABLER_CONFIG_INIT(&config, WdfDmaProfileScatterGather64, MAX_PACKET_SIZE);
+		config.Flags |= WDF_DMA_ENABLER_CONFIG_REQUIRE_SINGLE_TRANSFER;
+		config.WdmDmaVersionOverride = 3;
+		return WdfDmaEnablerCreate(m_WdfDevice, &config, WDF_NO_OBJECT_ATTRIBUTES, &m_DmaEnabler);
+	}
+	WDFDMAENABLER GetWdfDmaEnabler() CONST {
+		return m_DmaEnabler;
+	}
+	NTSTATUS InitializeWifiDevice() {
+		NTSTATUS status;
+		WIFI_DEVICE_CAPABILITIES DeviceCapabilities = { 0 };
+		DeviceCapabilities.Size = sizeof(DeviceCapabilities);
+		DeviceCapabilities.HardwareRadioState = 1;
+		DeviceCapabilities.SoftwareRadioState = 1;
+		DeviceCapabilities.ActionFramesSupported = 0;
+		DeviceCapabilities.NumRxStreams = 1;
+		DeviceCapabilities.NumTxStreams = 1;
+		DeviceCapabilities.Support_eCSA = 0;
+		DeviceCapabilities.MACAddressRandomization = 0;
+		DeviceCapabilities.BluetoothCoexistenceSupport = WDI_BLUETOOTH_COEXISTENCE_PERFORMANCE_MAINTAINED;
+		DeviceCapabilities.SupportsNonWdiOidRequests = 0;
+		DeviceCapabilities.FastTransitionSupported = 0;
+		DeviceCapabilities.MU_MIMOSupported = 0;
+		DeviceCapabilities.BSSTransitionSupported = 0;
+		DeviceCapabilities.SAEAuthenticationSupported = 0;
+		DeviceCapabilities.MBOSupported = 0;
+		DeviceCapabilities.BeaconReportsImplemented = 0;
+		status = WifiDeviceSetDeviceCapabilities(m_WdfDevice, &DeviceCapabilities);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WifiDeviceSetDeviceCapabilities failed with status=0x%08X \n", status);
+			return status;
+		}
+		DOT11_AUTH_CIPHER_PAIR UnicastAlgorithmsList[] = {
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_NONE },
+			// WEP
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_WEP40 },
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_WEP104 },
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_WEP },
+			{ DOT11_AUTH_ALGO_80211_SHARED_KEY, DOT11_CIPHER_ALGO_WEP40 },
+			{ DOT11_AUTH_ALGO_80211_SHARED_KEY, DOT11_CIPHER_ALGO_WEP104 },
+			{ DOT11_AUTH_ALGO_80211_SHARED_KEY, DOT11_CIPHER_ALGO_WEP },
+			// WPA/WPA2-Personal（PSK）
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_TKIP },   // WPA1
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_CCMP },   // WPA2 (AES)
+			{ DOT11_AUTH_ALGO_WPA_PSK, DOT11_CIPHER_ALGO_TKIP },    // 旧版 WPA1
+			{ DOT11_AUTH_ALGO_WPA_PSK, DOT11_CIPHER_ALGO_CCMP },    // 部分设备支持 WPA1 + AES
+			// WPA2/WPA3-Enterprise（802.1X）
+			{ DOT11_AUTH_ALGO_RSNA, DOT11_CIPHER_ALGO_TKIP },       // 企业级 WPA (TKIP)
+			{ DOT11_AUTH_ALGO_RSNA, DOT11_CIPHER_ALGO_CCMP },       // 企业级 WPA2 (AES)
+			// WPA3（新增 GCMP/CCMP-256）
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_GCMP },   // WPA3-Personal
+			{ DOT11_AUTH_ALGO_RSNA, DOT11_CIPHER_ALGO_GCMP },       // WPA3-Enterprise
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_CCMP_256 }, // WPA3 (可选)
+		};
+		DOT11_AUTH_CIPHER_PAIR MulticastDataAlgorithmsList[] = {
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_NONE },
+			// WEP
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_WEP40 },
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_WEP104 },
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_WEP },
+			// WPA/WPA2（GTK 加密）
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_TKIP },   // WPA1
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_CCMP },  // WPA2 (AES)
+			// WPA3（BIP + GCMP）
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_GCMP },   // WPA3
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_CCMP_256 }, // WPA3-256
+		};
+		DOT11_AUTH_CIPHER_PAIR MulticastMgmtAlgorithmsList[] = {
+			// 开放网络
+			{ DOT11_AUTH_ALGO_80211_OPEN, DOT11_CIPHER_ALGO_NONE },
+			// WPA3 新增的 BIP（Broadcast/Multicast Integrity Protocol）
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_BIP },        // WPA3 管理帧保护
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_BIP_GMAC_128 }, // WPA3-Enterprise
+			{ DOT11_AUTH_ALGO_RSNA_PSK, DOT11_CIPHER_ALGO_BIP_GMAC_256 }, // WPA3-Enterprise-256
+		};
+		WIFI_STATION_CAPABILITIES StationCapabilities = { 0 };
+		StationCapabilities.Size = sizeof(StationCapabilities);
+		StationCapabilities.ScanSSIDListSize = 32;
+		StationCapabilities.DesiredSSIDListSize = 32;
+		StationCapabilities.PrivacyExemptionListSize = 16;
+		StationCapabilities.KeyMappingTableSize = 16;
+		StationCapabilities.DefaultKeyTableSize = 16;
+		StationCapabilities.WEPKeyValueMaxLength = 16;
+		StationCapabilities.MaxNumPerSTA = 16;
+		StationCapabilities.NumSupportedUnicastAlgorithms = ARRAYSIZE(UnicastAlgorithmsList);
+		StationCapabilities.UnicastAlgorithmsList = UnicastAlgorithmsList;
+		StationCapabilities.NumSupportedMulticastDataAlgorithms = ARRAYSIZE(MulticastDataAlgorithmsList);
+		StationCapabilities.MulticastDataAlgorithmsList = MulticastDataAlgorithmsList;
+		StationCapabilities.NumSupportedMulticastMgmtAlgorithms = ARRAYSIZE(MulticastMgmtAlgorithmsList);
+		StationCapabilities.MulticastMgmtAlgorithmsList = MulticastMgmtAlgorithmsList;
+		status = WifiDeviceSetStationCapabilities(m_WdfDevice, &StationCapabilities);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WifiDeviceSetStationCapabilities failed with status=0x%08X \n", status);
+			return status;
+		}
+		WDI_PHY_TYPE ValidPhyTypeList24G[] = {
+		   WDI_PHY_TYPE_HRDSSS, // 11b	2.4G
+		   WDI_PHY_TYPE_ERP,    // 11g	2.4G
+		   WDI_PHY_TYPE_HT,     // 11n	2.4G + 5G
+		   WDI_PHY_TYPE_HE,     // 11ax	2.4G + 5G + 6G
+		   WDI_PHY_TYPE_EHT,    // 11be	2.4G + 5G + 6G
+		};
+		WDI_PHY_TYPE ValidPhyTypeList5G[] = {
+		   WDI_PHY_TYPE_OFDM,   // 11a	5G
+		   WDI_PHY_TYPE_HT,     // 11n	2.4G + 5G
+		   WDI_PHY_TYPE_VHT,    // 11ac	5G
+		   WDI_PHY_TYPE_HE,     // 11ax	2.4G + 5G + 6G
+		   WDI_PHY_TYPE_EHT,    // 11be	2.4G + 5G + 6G
+		};
+		WDI_CHANNEL_MAPPING_ENTRY ValidChannelTypes24G[] = {
+			//{ChannelNumber, ChannelCenterFrequency}
+			{1, 2412},
+			{2, 2417},
+			{3, 2422},
+			{4, 2427},
+			{5, 2432},
+			{6, 2437},
+			{7, 2442},
+			{8, 2447},
+			{9, 2452},
+			{10, 2457},
+			{11, 2462},
+			{12, 2467},
+			{13, 2472},
+			{14, 2484},
+		};
+		WDI_CHANNEL_MAPPING_ENTRY ValidChannelTypes5G[] = {
+			//{ChannelNumber, ChannelCenterFrequency}
+			{36, 5180 },
+			{40, 5200 },
+			{44, 5220 },
+			{48, 5240 },
+			{52, 5260},
+			{56, 5280},
+			{60, 5300},
+			{64, 5320},
+			{100, 5500},
+			{104, 5520},
+			{108, 5540},
+			{112, 5560},
+			{116, 5580},
+			{120, 5600},
+			{124, 5620},
+			{128, 5640},
+			{132, 5660},
+			{136, 5680},
+			{140, 5700},
+			{149, 5745},
+			{153, 5765},
+			{157, 5785},
+			{161, 5805},
+			{165, 5825}
+		};
+		UINT32 ChannelWidthList[] = { 20, 40 };
+		WIFI_BAND_INFO BandInfo[2] = {};
+		BandInfo[0].BandID = WDI_BAND_ID_2400;
+		BandInfo[0].BandState = TRUE;
+		BandInfo[0].NumValidPhyTypes = ARRAYSIZE(ValidPhyTypeList24G);
+		BandInfo[0].ValidPhyTypeList = ValidPhyTypeList24G;
+		BandInfo[0].NumValidChannelTypes = ARRAYSIZE(ValidChannelTypes24G);
+		BandInfo[0].ValidChannelTypes = ValidChannelTypes24G;
+		BandInfo[0].NumChannelWidths = ARRAYSIZE(ChannelWidthList);
+		BandInfo[0].ChannelWidthList = ChannelWidthList;
+		BandInfo[1].BandID = WDI_BAND_ID_5000;
+		BandInfo[1].BandState = TRUE;
+		BandInfo[1].NumValidPhyTypes = ARRAYSIZE(ValidPhyTypeList5G);
+		BandInfo[1].ValidPhyTypeList = ValidPhyTypeList5G;
+		BandInfo[1].NumValidChannelTypes = ARRAYSIZE(ValidChannelTypes5G);
+		BandInfo[1].ValidChannelTypes = ValidChannelTypes5G;
+		BandInfo[1].NumChannelWidths = ARRAYSIZE(ChannelWidthList);
+		BandInfo[1].ChannelWidthList = ChannelWidthList;
+		WIFI_BAND_CAPABILITIES BandCapabilities = { 0 };
+		BandCapabilities.Size = sizeof(BandCapabilities);
+		BandCapabilities.NumBands = ARRAYSIZE(BandInfo);
+		BandCapabilities.BandInfoList = BandInfo;
+		status = WifiDeviceSetBandCapabilities(m_WdfDevice, &BandCapabilities);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WifiDeviceSetBandCapabilities failed with status=0x%08X \n", status);
+			return status;
+		}
+		WDI_PHY_TYPE PhyTypeList[] = {
+		   WDI_PHY_TYPE_HE,       // 802.11ax (WiFi6)
+		   WDI_PHY_TYPE_VHT,      // 802.11ac
+		   WDI_PHY_TYPE_HT,       // 802.11n
+		   WDI_PHY_TYPE_ERP,      // 802.11g
+		   WDI_PHY_TYPE_DSSS      // 802.11b
+		};
+		WDI_DATA_RATE_ENTRY heDataRates[] = {// .11ax
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C00 }, // MCS0
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C01 }, // MCS1
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C02 }, // MCS2
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C03 }, // MCS3
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C04 }, // MCS4
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C05 }, // MCS5
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C06 }, // MCS6
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C07 }, // MCS7
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C08 }, // MCS8
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C09 }, // MCS9
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C0A }, // MCS10
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C0B }, // MCS11
+		};
+		WDI_DATA_RATE_ENTRY vhtDataRates[] = {// .11ac
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A00 }, // MCS0
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A01 }, // MCS1
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A02 }, // MCS2
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A03 }, // MCS3
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A04 }, // MCS4
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A05 }, // MCS5
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A06 }, // MCS6
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A07 }, // MCS7
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A08 }, // MCS8
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0A09 }, // MCS9
+		};
+		WDI_DATA_RATE_ENTRY htDataRates[] = {// .11n
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0800 }, // MCS0
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0801 }, // MCS1
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0802 }, // MCS2
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0803 }, // MCS3
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0804 }, // MCS4
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0805 }, // MCS5
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0806 }, // MCS6
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0807 }, // MCS7
+		};
+		WDI_DATA_RATE_ENTRY erpDataRates[] = {// .11g
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x02 }, // 1 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x04 }, // 2 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0B }, // 5.5 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C }, // 11 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x12 }, // 6 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x18 }, // 9 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x24 }, // 12 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x30 }, // 18 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x48 }, // 24 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x60 }, // 36 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x6C }, // 48 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x78 }, // 54 Mbps
+		};
+		WDI_DATA_RATE_ENTRY dsssDataRates[] = {// .11b
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x02 }, // 1 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x04 }, // 2 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0B }, // 5.5 Mbps
+		   { WDI_DATA_RATE_RX_RATE | WDI_DATA_RATE_TX_RATE, 0x0C }, // 11 Mbps
+		};
+		WDI_DATA_RATE_ENTRY* DataRateList[] = { heDataRates, vhtDataRates, htDataRates, erpDataRates, dsssDataRates };
+		SIZE_T NumberDataRateEntries[] = { ARRAYSIZE(heDataRates), ARRAYSIZE(vhtDataRates), ARRAYSIZE(htDataRates), ARRAYSIZE(erpDataRates), ARRAYSIZE(dsssDataRates) };
+		WIFI_PHY_INFO PhyInfoList[5] = {};
+		for (ULONG i = 0; i < ARRAYSIZE(PhyTypeList); i++) {
+			PhyInfoList[i].PhyType = PhyTypeList[i];
+			PhyInfoList[i].NumberDataRateEntries = NumberDataRateEntries[i];
+			RtlCopyMemory(PhyInfoList[i].DataRateList, DataRateList[i], NumberDataRateEntries[i]);
+		}
+		WIFI_PHY_CAPABILITIES PhyCapabilities = { 0 };
+		PhyCapabilities.Size = sizeof(PhyCapabilities);
+		PhyCapabilities.NumPhyTypes = ARRAYSIZE(PhyInfoList);
+		PhyCapabilities.PhyInfoList = PhyInfoList;
+		status = WifiDeviceSetPhyCapabilities(m_WdfDevice, &PhyCapabilities);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WifiDeviceSetPhyCapabilities failed with status=0x%08X \n", status);
+			return status;
+		}
+		WIFI_WIFIDIRECT_CAPABILITIES wifiDirectCapabilities = { 0 };
+		wifiDirectCapabilities.Size = sizeof(wifiDirectCapabilities);
+		status = WifiDeviceSetWiFiDirectCapabilities(m_WdfDevice, &wifiDirectCapabilities);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WifiDeviceSetWiFiDirectCapabilities failed with status=0x%08X \n", status);
+			return status;
+		}
+		return status;
+	}
+	NTSTATUS InitializeUsbDevice() {
+		NTSTATUS status;
+		WDF_USB_DEVICE_CREATE_CONFIG config;
+		WDF_USB_DEVICE_CREATE_CONFIG_INIT(&config, USBD_CLIENT_CONTRACT_VERSION_602);
+		status = WdfUsbTargetDeviceCreateWithParameters(m_WdfDevice, &config, WDF_NO_OBJECT_ATTRIBUTES, &m_WdfUsbDevice);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WdfUsbTargetDeviceCreateWithParameters failed with status=0x%08X \n", status);
+			return status;
+		}
+		UCHAR numInterfaces = WdfUsbTargetDeviceGetNumInterfaces(m_WdfUsbDevice);
+		WDF_USB_DEVICE_SELECT_CONFIG_PARAMS configParams;
+		WDF_USB_DEVICE_SELECT_CONFIG_PARAMS_INIT_SINGLE_INTERFACE(&configParams);
+		status = WdfUsbTargetDeviceSelectConfig(m_WdfUsbDevice, WDF_NO_OBJECT_ATTRIBUTES, &configParams);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WdfUsbTargetDeviceSelectConfig failed with status=0x%08X\n", status);
+			return status;
+		}
+		// For USB Check
+		m_DataInterface = configParams.Types.SingleInterface.ConfiguredUsbInterface;
+		WdfUsbInterfaceGetDescriptor(m_DataInterface, 0, &m_UsbInterfaceDescriptor);
+		WdfUsbTargetDeviceGetDeviceDescriptor(m_WdfUsbDevice, &m_UsbDeviceDescriptor);
+		UCHAR numPipes = configParams.Types.SingleInterface.NumberConfiguredPipes;
+		WDFUSBPIPE pipe;
+		WDF_USB_PIPE_INFORMATION pipeInfo;
+		for (UCHAR i = 0; i < numPipes; i++) {
+			WDF_USB_PIPE_INFORMATION_INIT(&pipeInfo);
+			pipe = WdfUsbInterfaceGetConfiguredPipe(m_DataInterface, i, &pipeInfo);
+			WdfUsbTargetPipeSetNoMaximumPacketSizeCheck(pipe);
+			if (pipeInfo.PipeType == WdfUsbPipeTypeBulk && WdfUsbTargetPipeIsInEndpoint(pipe)) {
+				if (m_RxEventPipe == WDF_NO_HANDLE) {
+					m_RxEventPipe = pipe;
+				}
+				else if (m_RxDataPipe == WDF_NO_HANDLE) {
+					m_RxDataPipe = pipe;
+				}
+			}
+			if (pipeInfo.PipeType == WdfUsbPipeTypeBulk && WdfUsbTargetPipeIsOutEndpoint(pipe)) {
+				if (m_TxMsgPipe == WDF_NO_HANDLE) {
+					m_TxMsgPipe = pipe;
+				}
+				else if (m_TxDataPipe == WDF_NO_HANDLE) {
+					m_TxDataPipe = pipe;
+				}
+			}
+		}
+		if (m_TxMsgPipe == WDF_NO_HANDLE || m_TxDataPipe == WDF_NO_HANDLE ||
+			m_RxEventPipe == WDF_NO_HANDLE || m_RxDataPipe == WDF_NO_HANDLE)
+		{
+			LOG_ERROR("TxMsgPipe=%p, TxDataPipe=%p, RxEventPipe=%p, RxDataPipe=%p \n", m_TxMsgPipe, m_TxDataPipe, m_RxEventPipe, m_RxDataPipe);
+			status = STATUS_UNSUCCESSFUL;
+			return status;
+		}
+		WDF_USB_CONTINUOUS_READER_CONFIG readerConfig;
+		WDF_USB_CONTINUOUS_READER_CONFIG_INIT(&readerConfig, EvtUsbRxEventComplete, this, 2048);
+		readerConfig.NumPendingReads = 2;
+		readerConfig.EvtUsbTargetPipeReadersFailed = EvtUsbTargetPipeReadersFailed;
+		status = WdfUsbTargetPipeConfigContinuousReader(m_RxEventPipe, &readerConfig);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WdfUsbTargetPipeConfigContinuousReader for m_RxEventPipe failed with status=0x%08X\n", status);
+			return status;
+		}
+		WDF_USB_CONTINUOUS_READER_CONFIG_INIT(&readerConfig, EvtUsbRxDataComplete, this, 2048);
+		readerConfig.NumPendingReads = 10;
+		readerConfig.EvtUsbTargetPipeReadersFailed = EvtUsbTargetPipeReadersFailed;
+		status = WdfUsbTargetPipeConfigContinuousReader(m_RxDataPipe, &readerConfig);
+		if (!NT_SUCCESS(status)) {
+			LOG_ERROR("WdfUsbTargetPipeConfigContinuousReader for m_RxDataPipe failed with status=0x%08X\n", status);
+			return status;
+		}
+		//status = WdfIoTargetStart(WdfUsbTargetPipeGetIoTarget(m_RxEventPipe));
+		//if (!NT_SUCCESS(status)) {
+		//	LOG_ERROR("WdfIoTargetStart(Event Pipe) failed with status=0x%08X\n", status);
+		//	return status;
+		//}
+		//status = WdfIoTargetStart(WdfUsbTargetPipeGetIoTarget(m_RxDataPipe));
+		//if (!NT_SUCCESS(status)) {
+		//	LOG_ERROR("WdfIoTargetStart(Data Pipe) failed with status=0x%08X\n", status);
+		//	return status;
+		//}
+		//status = WdfIoTargetStart(WdfUsbTargetPipeGetIoTarget(m_TxMsgPipe));
+		//if (!NT_SUCCESS(status)) {
+		//	LOG_ERROR("WdfIoTargetStart TxMessagePipe failed with status=0x%08X\n", status);
+		//	return status;
+		//}
+		//status = WdfIoTargetStart(WdfUsbTargetPipeGetIoTarget(m_TxDataPipe));
+		//if (!NT_SUCCESS(status)) {
+		//	LOG_ERROR("WdfIoTargetStart TxDataPipe failed with status=0x%08X\n", status);
+		//	return status;
+		//}
+		return status;
+	}
+	VOID DumpUsbVersion() CONST {
+		switch (m_UsbDeviceDescriptor.bcdUSB) {
+		case 0x0110:
+			LOG_INFO("USB 1.1 (Full Speed) device detected\n");
+			break;
+		case 0x0200:
+			LOG_INFO("USB 2.0 (High Speed) device detected\n");
+			break;
+		case 0x0201:
+			LOG_INFO("USB 2.0 with LPM (Link Power Management) detected\n");
+			break;
+		case 0x0300:
+			LOG_INFO("USB 3.0 (Super Speed) device detected\n");
+			break;
+		case 0x0310:
+			LOG_INFO("USB 3.1 (Super Speed+) device detected\n");
+			break;
+		default:
+			LOG_INFO("Unknown USB version (0x%04X) detected\n", m_UsbDeviceDescriptor.bcdUSB);
+			break;
+		}
+	}
+	_IRQL_requires_max_(DISPATCH_LEVEL)
+		static
+		VOID
+		EvtUsbRxEventComplete(
+			_In_  WDFUSBPIPE Pipe,
+			_In_  WDFMEMORY Buffer,
+			_In_  size_t NumBytesTransferred,
+			_In_  WDFCONTEXT Context
+		);
+	_IRQL_requires_max_(DISPATCH_LEVEL)
+		static
+		VOID
+		EvtUsbRxDataComplete(
+			_In_  WDFUSBPIPE Pipe,
+			_In_  WDFMEMORY Buffer,
+			_In_  size_t NumBytesTransferred,
+			_In_  WDFCONTEXT Context
+		);
+	_IRQL_requires_max_(PASSIVE_LEVEL)
+		static
+		BOOLEAN
+		EvtUsbTargetPipeReadersFailed(
+			_In_ WDFUSBPIPE Pipe,
+			_In_ NTSTATUS Status,
+			_In_ USBD_STATUS UsbdStatus
+		);
+public:
+	TLV_CONTEXT m_TlvContext;
+private:
+	WDFDEVICE m_WdfDevice;
+	WDFDMAENABLER m_DmaEnabler;
+	WDFUSBDEVICE m_WdfUsbDevice;
+	WDFUSBINTERFACE m_DataInterface;
+	WDFUSBPIPE m_TxMsgPipe;
+	WDFUSBPIPE m_TxDataPipe;
+	WDFUSBPIPE m_RxEventPipe;
+	WDFUSBPIPE m_RxDataPipe;
+	USB_INTERFACE_DESCRIPTOR m_UsbInterfaceDescriptor;
+	USB_DEVICE_DESCRIPTOR m_UsbDeviceDescriptor;
+};
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DeviceContext, WdfDeviceGetContext)
+class Adapter {
+public:
+	Adapter(
+		_In_ NETADAPTER NetAdapter
+	) :
+		m_NetAdapter(NetAdapter)
+	{
+		LOG_TRACE("Parameter constructor call \n");
+	}
+	~Adapter() {
+		LOG_TRACE("Destructor call \n");
+	}
+	NETADAPTER GetNetAdapter() CONST { return m_NetAdapter; }
+	VOID SetNetAdapter(NETADAPTER NetAdapter) { m_NetAdapter = NetAdapter; }
+	VOID SetLinkState(
+		_In_  ULONG64								LinkSpeed,
+		_In_  NET_IF_MEDIA_CONNECT_STATE			MediaConnectState,
+		_In_  NET_IF_MEDIA_DUPLEX_STATE				MediaDuplexState,
+		_In_  NET_ADAPTER_PAUSE_FUNCTION_TYPE		SupportedPauseFunctions,
+		_In_  NET_ADAPTER_AUTO_NEGOTIATION_FLAGS	AutoNegotiationFlags
+	) {
+		NET_ADAPTER_LINK_STATE linkState;
+		NET_ADAPTER_LINK_STATE_INIT(
+			&linkState,
+			LinkSpeed, MediaConnectState, MediaDuplexState, SupportedPauseFunctions, AutoNegotiationFlags
+		);
+		NetAdapterSetLinkState(m_NetAdapter, &linkState);
+	}
+	void SetLinkLayerCapabilities(
+		_In_ ULONG64 MaxTxLinkSpeed,
+		_In_ ULONG64 MaxRxLinkSpeed
+	) {
+		NET_ADAPTER_LINK_LAYER_CAPABILITIES linkLayerCapabilities;
+		NET_ADAPTER_LINK_LAYER_CAPABILITIES_INIT(&linkLayerCapabilities, MaxTxLinkSpeed, MaxRxLinkSpeed);
+		NetAdapterSetLinkLayerCapabilities(m_NetAdapter, &linkLayerCapabilities);
+	}
+	void SetLinkLayerMtuSize(
+		_In_ ULONG MtuSize
+	) {
+		NetAdapterSetLinkLayerMtuSize(m_NetAdapter, MtuSize);
+	}
+	const NET_ADAPTER_LINK_LAYER_ADDRESS& GetPermanentAddress() const {
+		return m_PermanentAddress;
+	}
+	void SetPermanentAddress(const NET_ADAPTER_LINK_LAYER_ADDRESS& address) {
+		m_PermanentAddress = address;
+		NetAdapterSetPermanentLinkLayerAddress(m_NetAdapter, &m_PermanentAddress);
+	}
+	const NET_ADAPTER_LINK_LAYER_ADDRESS& GetCurrentAddress() const {
+		return m_CurrentAddress;
+	}
+	void SetCurrentAddress(const NET_ADAPTER_LINK_LAYER_ADDRESS& address) {
+		m_CurrentAddress = address;
+		NetAdapterSetCurrentLinkLayerAddress(m_NetAdapter, &m_CurrentAddress);
+	}
+	VOID SetDatapathCapabilities(
+		_In_ WDFDMAENABLER DmaEnabler
+	) {
+		NET_ADAPTER_DMA_CAPABILITIES txDmaCapabilities;
+		NET_ADAPTER_DMA_CAPABILITIES_INIT(&txDmaCapabilities, DmaEnabler);
+		NET_ADAPTER_TX_CAPABILITIES txCapabilities;
+		NET_ADAPTER_TX_CAPABILITIES_INIT_FOR_DMA(&txCapabilities, &txDmaCapabilities, 1);
+		txCapabilities.FragmentRingNumberOfElementsHint = MTK_MIN_TCB * MTK_MAX_PHYS_BUF_COUNT;
+		txCapabilities.MaximumNumberOfFragments = MTK_MAX_PHYS_BUF_COUNT;
+		NET_ADAPTER_DMA_CAPABILITIES rxDmaCapabilities;
+		NET_ADAPTER_DMA_CAPABILITIES_INIT(&rxDmaCapabilities, DmaEnabler);
+		NET_ADAPTER_RX_CAPABILITIES rxCapabilities;
+		NET_ADAPTER_RX_CAPABILITIES_INIT_SYSTEM_MANAGED_DMA(&rxCapabilities, &rxDmaCapabilities, MAX_PACKET_SIZE + FRAME_CRC_SIZE + RSVD_BUF_SIZE, 1);
+		rxCapabilities.FragmentBufferAlignment = 64;
+		rxCapabilities.FragmentRingNumberOfElementsHint = 32;
+		NetAdapterSetDataPathCapabilities(m_NetAdapter, &txCapabilities, &rxCapabilities);
+	}
+	VOID SetDatapathCapabilities() {
+		NET_ADAPTER_TX_CAPABILITIES txCapabilities;
+		NET_ADAPTER_TX_CAPABILITIES_INIT(&txCapabilities, 1);
+		txCapabilities.FragmentRingNumberOfElementsHint = MTK_MIN_TCB * MTK_MAX_PHYS_BUF_COUNT;
+		txCapabilities.MaximumNumberOfFragments = MTK_MAX_PHYS_BUF_COUNT;
+		NET_ADAPTER_RX_CAPABILITIES rxCapabilities;
+		NET_ADAPTER_RX_CAPABILITIES_INIT_SYSTEM_MANAGED(&rxCapabilities, MAX_PACKET_SIZE + FRAME_CRC_SIZE + RSVD_BUF_SIZE, 1);
+		rxCapabilities.FragmentBufferAlignment = 64;
+		rxCapabilities.FragmentRingNumberOfElementsHint = 32;
+		NetAdapterSetDataPathCapabilities(m_NetAdapter, &txCapabilities, &rxCapabilities);
+	}
+private:
+	NETADAPTER m_NetAdapter;
+	NET_ADAPTER_LINK_LAYER_ADDRESS m_PermanentAddress;
+	NET_ADAPTER_LINK_LAYER_ADDRESS m_CurrentAddress;
+};
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(Adapter, NetAdapterGetContext)
+class NetTxQueue {
+public:
+	ULONG GetQueueId() CONST { return m_QueueId; }
+	VOID SetNetQueueId(ULONG QueueId) { m_QueueId = QueueId; }
+	VOID SetNetExtension(NETPACKETQUEUE queue) {
+		NET_EXTENSION_QUERY extension;
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_PACKET_EXTENSION_CHECKSUM_NAME,
+			NET_PACKET_EXTENSION_CHECKSUM_VERSION_1,
+			NetExtensionTypePacket
+		);
+		NetTxQueueGetExtension(queue, &extension, &m_ChecksumExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_PACKET_EXTENSION_GSO_NAME,
+			NET_PACKET_EXTENSION_GSO_VERSION_1,
+			NetExtensionTypePacket
+		);
+		NetTxQueueGetExtension(queue, &extension, &m_GsoExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_PACKET_EXTENSION_IEEE8021Q_NAME,
+			NET_PACKET_EXTENSION_IEEE8021Q_VERSION_1,
+			NetExtensionTypePacket
+		);
+		NetTxQueueGetExtension(queue, &extension, &m_Ieee8021qExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_FRAGMENT_EXTENSION_VIRTUAL_ADDRESS_NAME,
+			NET_FRAGMENT_EXTENSION_VIRTUAL_ADDRESS_VERSION_1,
+			NetExtensionTypeFragment
+		);
+		NetTxQueueGetExtension(queue, &extension, &m_VirtualAddressExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_FRAGMENT_EXTENSION_LOGICAL_ADDRESS_NAME,
+			NET_FRAGMENT_EXTENSION_LOGICAL_ADDRESS_VERSION_1,
+			NetExtensionTypeFragment
+		);
+		NetTxQueueGetExtension(queue, &extension, &m_LogicalAddressExtension);
+	}
+	VOID SetNetRings(NETPACKETQUEUE PacketQueue) { m_Rings = NetTxQueueGetRingCollection(PacketQueue); }
+	static EVT_WDF_OBJECT_CONTEXT_DESTROY EvtTxQueueDestroy;
+	static EVT_PACKET_QUEUE_ADVANCE EvtTxQueueAdvance;
+	static EVT_PACKET_QUEUE_CANCEL EvtTxQueueCancel;
+	static EVT_PACKET_QUEUE_START EvtTxQueueStart;
+	static EVT_PACKET_QUEUE_STOP EvtTxQueueStop;
+	static EVT_PACKET_QUEUE_SET_NOTIFICATION_ENABLED EvtTxQueueSetNotificationEnabled;
+private:
+	const NET_RING_COLLECTION* m_Rings;
+	ULONG m_QueueId;
+	NET_EXTENSION m_ChecksumExtension;
+	NET_EXTENSION m_GsoExtension;
+	NET_EXTENSION m_VirtualAddressExtension;
+	NET_EXTENSION m_LogicalAddressExtension;
+	NET_EXTENSION m_Ieee8021qExtension;
+	WDFCOMMONBUFFER m_TxdArray;
+};
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(NetTxQueue, NetPacketTxQueueGetContext)
+class NetRxQueue {
+public:
+	ULONG GetQueueId() CONST { return m_QueueId; }
+	VOID SetNetQueueId(ULONG QueueId) { m_QueueId = QueueId; }
+	VOID SetNetExtension(NETPACKETQUEUE queue) {
+		NET_EXTENSION_QUERY extension;
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_PACKET_EXTENSION_CHECKSUM_NAME,
+			NET_PACKET_EXTENSION_CHECKSUM_VERSION_1,
+			NetExtensionTypePacket
+		);
+		NetRxQueueGetExtension(queue, &extension, &m_ChecksumExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_FRAGMENT_EXTENSION_VIRTUAL_ADDRESS_NAME,
+			NET_FRAGMENT_EXTENSION_VIRTUAL_ADDRESS_VERSION_1,
+			NetExtensionTypeFragment
+		);
+		NetRxQueueGetExtension(queue, &extension, &m_VirtualAddressExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_FRAGMENT_EXTENSION_LOGICAL_ADDRESS_NAME,
+			NET_FRAGMENT_EXTENSION_LOGICAL_ADDRESS_VERSION_1,
+			NetExtensionTypeFragment
+		);
+		NetRxQueueGetExtension(queue, &extension, &m_LogicalAddressExtension);
+		NET_EXTENSION_QUERY_INIT(
+			&extension,
+			NET_PACKET_EXTENSION_HASH_NAME,
+			NET_PACKET_EXTENSION_HASH_VERSION_1,
+			NetExtensionTypePacket
+		);
+		NetRxQueueGetExtension(queue, &extension, &m_HashValueExtension);
+	}
+	VOID SetNetRings(NETPACKETQUEUE PacketQueue) { m_Rings = NetRxQueueGetRingCollection(PacketQueue); }
+	static EVT_WDF_OBJECT_CONTEXT_DESTROY EvtRxQueueDestroy;
+	static EVT_PACKET_QUEUE_ADVANCE EvtRxQueueAdvance;
+	static EVT_PACKET_QUEUE_SET_NOTIFICATION_ENABLED EvtRxQueueSetNotificationEnabled;
+	static EVT_PACKET_QUEUE_CANCEL EvtRxQueueCancel;
+	static EVT_PACKET_QUEUE_START EvtRxQueueStart;
+	static EVT_PACKET_QUEUE_STOP EvtRxQueueStop;
+private:
+	const NET_RING_COLLECTION* m_Rings;
+	ULONG m_QueueId;
+	NET_EXTENSION m_ChecksumExtension;
+	NET_EXTENSION m_VirtualAddressExtension;
+	NET_EXTENSION m_LogicalAddressExtension;
+	NET_EXTENSION m_HashValueExtension;
+	WDFCOMMONBUFFER m_RxdArray;
+};
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(NetRxQueue, NetPacketRxQueueGetContext)
+NTSTATUS
+DriverEntry(
+	_In_ PDRIVER_OBJECT  DriverObject,
+	_In_ PUNICODE_STRING RegistryPath
+) {
+	LOG_TRACE("==> Build on %s at %s \n", __DATE__, __TIME__);
+	WPP_INIT_TRACING(DriverObject, RegistryPath);
+	TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_DRIVER, "%!FUNC! Entry");
+	NTSTATUS status;
+	WDF_OBJECT_ATTRIBUTES attributes;
+	WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+	attributes.EvtCleanupCallback = EvtDriverContextCleanup;
+	WDF_DRIVER_CONFIG config;
+	WDF_DRIVER_CONFIG_INIT(&config, EvtDriverDeviceAdd);
+	config.DriverPoolTag = 'RTEK';
+	config.EvtDriverUnload = EvtDriverUnload;
+	status = WdfDriverCreate(DriverObject, RegistryPath, &attributes, &config, WDF_NO_HANDLE);
+	if (!NT_SUCCESS(status)) {
+		TraceEvents(TRACE_LEVEL_ERROR, TRACE_DRIVER, "WdfDriverCreate failed %!STATUS!", status);
+		WPP_CLEANUP(DriverObject);
+		return status;
+	}
+	TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_DRIVER, "%!FUNC! Exit");
+	FunctionExit;
+	return status;
+}
+NTSTATUS
+EvtDriverDeviceAdd(
+	_In_    WDFDRIVER       Driver,
+	_Inout_ PWDFDEVICE_INIT DeviceInit
+) {
+	NTSTATUS status;
+	PAGED_CODE();
+	TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_DRIVER, "%!FUNC! Entry");
+	status = CreateDevice(DeviceInit);
+	TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_DRIVER, "%!FUNC! Exit");
+	return status;
+}
+NTSTATUS
+CreateDevice(
+	_Inout_ PWDFDEVICE_INIT DeviceInit
+)
+/*++
+Routine Description:
+	Worker routine called to create a device and its software resources.
+Arguments:
+	DeviceInit - Pointer to an opaque init structure. Memory for this
+					structure will be freed by the framework when the WdfDeviceCreate
+					succeeds. So don't access the structure after that point.
+Return Value:
+	NTSTATUS
+--*/
+{
+	FunctionEntry;
+	NTSTATUS status;
+	PAGED_CODE();
+	status = NetDeviceInitConfig(DeviceInit);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== NetDeviceInitConfig failed with status=0x%08X", status);
+		return status;
+	}
+	status = WifiDeviceInitConfig(DeviceInit);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== WifiDeviceInitConfig failed with status=0x%08X", status);
+		return status;
+	}
+	WDF_PNPPOWER_EVENT_CALLBACKS pnpPowerCallbacks;
+	WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpPowerCallbacks);
+	pnpPowerCallbacks.EvtDevicePrepareHardware = EvtDevicePrepareHardware;
+	pnpPowerCallbacks.EvtDeviceReleaseHardware = EvtDeviceReleaseHardware;
+	pnpPowerCallbacks.EvtDeviceD0Entry = EvtDeviceD0Entry;
+	pnpPowerCallbacks.EvtDeviceD0Exit = EvtDeviceD0Exit;
+	WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpPowerCallbacks);
+	WDF_OBJECT_ATTRIBUTES deviceAttributes;
+	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&deviceAttributes, DeviceContext);
+	WDFDEVICE device;
+	status = WdfDeviceCreate(&DeviceInit, &deviceAttributes, &device);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== WdfDeviceCreate failed with status=0x%08X", status);
+		return status;
+	}
+	DeviceContext* devContext = new (WdfDeviceGetContext(device)) DeviceContext(device);
+	WIFI_DEVICE_CONFIG wifiDeviceConfig;
+	WIFI_DEVICE_CONFIG_INIT(
+		&wifiDeviceConfig,
+		WDI_VERSION_LATEST,
+		EvtWiFiDeviceSendCommand,
+		EvtWiFiDeviceCreateAdapter,
+		EvtWifiDeviceCreateWiFiDirectDevice
+	);
+	status = WifiDeviceInitialize(device, &wifiDeviceConfig);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== WifiDeviceInitialize failed with status=0x%08X", status);
+		return status;
+	}
+	devContext->m_TlvContext.PeerVersion = WifiDeviceGetOsWdiVersion(device);
+	FunctionExit;
+	return status;
+}
+_Use_decl_annotations_
+NTSTATUS
+EvtDevicePrepareHardware(
+	_In_ WDFDEVICE Device,
+	_In_ WDFCMRESLIST ResourcesRaw,
+	_In_ WDFCMRESLIST ResourcesTranslated
+) {
+	FunctionEntry;
+	NTSTATUS status = STATUS_SUCCESS;
+	DeviceContext* devContext = WdfDeviceGetContext(Device);
+	status = devContext->InitializeWifiDevice();
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+	status = devContext->InitializeUsbDevice();
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+	FunctionExit;
+	return status;
+}
+_Use_decl_annotations_
+NTSTATUS
+EvtDeviceD0Entry(
+	_In_ WDFDEVICE Device,
+	_In_ WDF_POWER_DEVICE_STATE PreviousState
+) {
+	FunctionEntry;
+	if (PreviousState != WdfPowerDeviceD3Final) {
+		// We're coming back from low power, undo what we did in EvtDeviceD0Exit
+	}
+	FunctionExit;
+	return STATUS_SUCCESS;
+}
+_Use_decl_annotations_
+NTSTATUS
+EvtWiFiDeviceCreateAdapter(
+	_In_ WDFDEVICE WdfDevice,
+	_Inout_ NETADAPTER_INIT* AdapterInit
+) {
+	FunctionEntry;
+	NTSTATUS status;
+	NET_ADAPTER_DATAPATH_CALLBACKS datapathCallbacks;
+	NET_ADAPTER_DATAPATH_CALLBACKS_INIT(
+		&datapathCallbacks,
+		EvtAdapterCreateTxQueue,
+		EvtAdapterCreateRxQueue
+	);
+	NetAdapterInitSetDatapathCallbacks(AdapterInit, &datapathCallbacks);
+	WDF_OBJECT_ATTRIBUTES adapterAttributes;
+	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&adapterAttributes, Adapter);
+	NETADAPTER NetAdapter;
+	status = NetAdapterCreate(AdapterInit, &adapterAttributes, &NetAdapter);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== NetAdapterCreate failed with status=0x%08X \n", status);
+		return status;
+	}
+	status = WifiAdapterInitialize(NetAdapter);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== WifiAdapterInitialize failed with status=0x%08X \n", status);
+		return status;
+	}
+	WIFI_ADAPTER_TYPE WifiAdapterType = WifiAdapterGetType(NetAdapter);
+	ULONG PortId = WifiAdapterGetPortId(NetAdapter);
+	LOG_INFO("WifiAdapterType=%d, PortId=%d \n", WifiAdapterType, PortId);
+	Adapter* pAdapter = new (NetAdapterGetContext(NetAdapter)) Adapter(NetAdapter);
+	pAdapter->SetLinkState(
+		NDIS_LINK_SPEED_UNKNOWN,
+		MediaConnectStateConnected,
+		MediaDuplexStateFull,
+		NetAdapterPauseFunctionTypeUnknown,
+		NetAdapterAutoNegotiationFlagNone
+	);
+	pAdapter->SetLinkLayerCapabilities(MTK_MEDIA_MAX_SPEED, MTK_MEDIA_MAX_SPEED);
+	pAdapter->SetLinkLayerMtuSize(MAX_PACKET_SIZE - ETH_LENGTH_OF_HEADER);
+	NET_ADAPTER_LINK_LAYER_ADDRESS MacAddress = { 6, { 0x22, 0x33, 0x44, 0x55, 0x66, 0x77 } };
+	pAdapter->SetPermanentAddress(MacAddress);
+	pAdapter->SetCurrentAddress(MacAddress);
+#if PCIE_INTERFACE
+	DeviceContext* device = WdfDeviceGetContext(WdfDevice);
+	status = device->CreateDmaEnabler();
+	if (!NT_SUCCESS(status)) {
+		LOG_INFO("<== CreateDmaEnabler failed with status=0x%08X \n\n", status);
+		return status;
+	}
+	pAdapter->SetDatapathCapabilities(device->GetWdfDmaEnabler());
+#else
+	pAdapter->SetDatapathCapabilities();
+#endif
+	status = NetAdapterStart(NetAdapter);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("<== NetAdapterStart failed with status=0x%08X \n\n", status);
+		return status;
+	}
+	FunctionExit;
+	return status;
+}
+_Use_decl_annotations_
+VOID
+EvtWiFiDeviceSendCommand(
+	_In_ WDFDEVICE WdfDevice,
+	_In_ WIFIREQUEST Request
+) {
+	UINT16 MessageId = WifiRequestGetMessageId(Request);
+	LOG_INFO("MessageId=%d \n", MessageId);
+	UINT InputBufferLen, OutputBufferLen;
+	PWDI_MESSAGE_HEADER pWdiHeader = (PWDI_MESSAGE_HEADER)WifiRequestGetInOutBuffer(Request, &InputBufferLen, &OutputBufferLen);
+	pWdiHeader->Status = NDIS_STATUS_SUCCESS;
+	WifiRequestComplete(Request, STATUS_SUCCESS, sizeof(WDI_MESSAGE_HEADER));
+}
+_Use_decl_annotations_
+NTSTATUS
+EvtAdapterCreateTxQueue(
+	_In_ NETADAPTER netAdapter,
+	_Inout_ NETTXQUEUE_INIT* TxQueueInit
+) {
+	FunctionEntry;
+	NTSTATUS status = STATUS_SUCCESS;
+	Adapter* adapter = NetAdapterGetContext(netAdapter);
+	WDF_OBJECT_ATTRIBUTES txAttributes;
+	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&txAttributes, NetTxQueue);
+	txAttributes.EvtDestroyCallback = NetTxQueue::EvtTxQueueDestroy;
+	NET_PACKET_QUEUE_CONFIG txConfig;
+	NET_PACKET_QUEUE_CONFIG_INIT(
+		&txConfig,
+		NetTxQueue::EvtTxQueueAdvance,
+		NetTxQueue::EvtTxQueueSetNotificationEnabled,
+		NetTxQueue::EvtTxQueueCancel
+	);
+	// Optional: register the queue's start and stop callbacks
+	txConfig.EvtStart = NetTxQueue::EvtTxQueueStart;
+	txConfig.EvtStop = NetTxQueue::EvtTxQueueStop;
+	// Get the queue ID
+	const ULONG queueId = NetTxQueueInitGetQueueId(TxQueueInit);
+	LOG_INFO("QueueId=%d \n", queueId);
+	NETPACKETQUEUE queue;
+	status = NetTxQueueCreate(TxQueueInit, &txAttributes, &txConfig, &queue);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("NetTxQueueCreate failed with status=0x%08X", status);
+		return status;
+	}
+	NetTxQueue* tx = new (NetPacketTxQueueGetContext(queue)) NetTxQueue();
+	tx->SetNetExtension(queue);
+	tx->SetNetRings(queue);
+	tx->SetNetQueueId(queueId);
+	FunctionExit;
+	return status;
+}
+_Use_decl_annotations_
+NTSTATUS
+EvtAdapterCreateRxQueue(
+	_In_ NETADAPTER NetAdapter,
+	_Inout_ NETRXQUEUE_INIT* RxQueueInit
+) {
+	FunctionEntry;
+	NTSTATUS status = STATUS_SUCCESS;
+	Adapter* adapter = NetAdapterGetContext(NetAdapter);
+	WDF_OBJECT_ATTRIBUTES rxAttributes;
+	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&rxAttributes, NetRxQueue);
+	rxAttributes.EvtDestroyCallback = NetRxQueue::EvtRxQueueDestroy;
+	NET_PACKET_QUEUE_CONFIG rxConfig;
+	NET_PACKET_QUEUE_CONFIG_INIT(
+		&rxConfig,
+		NetRxQueue::EvtRxQueueAdvance,
+		NetRxQueue::EvtRxQueueSetNotificationEnabled,
+		NetRxQueue::EvtRxQueueCancel
+	);
+	// Optional: register the queue's start and stop callbacks
+	rxConfig.EvtStart = NetRxQueue::EvtRxQueueStart;
+	rxConfig.EvtStop = NetRxQueue::EvtRxQueueStop;
+	// Get the queue ID
+	const ULONG queueId = NetRxQueueInitGetQueueId(RxQueueInit);
+	LOG_INFO("QueueId=%d \n", queueId);
+	NETPACKETQUEUE queue;
+	status = NetRxQueueCreate(RxQueueInit, &rxAttributes, &rxConfig, &queue);
+	if (!NT_SUCCESS(status)) {
+		LOG_ERROR("NetRxQueueCreate failed with status=0x%08X", status);
+		return status;
+	}
+	NetRxQueue* rx = new (NetPacketRxQueueGetContext(queue)) NetRxQueue();
+	rx->SetNetExtension(queue);
+	rx->SetNetRings(queue);
+	rx->SetNetQueueId(queueId);
+	FunctionExit;
+	return status;
+}

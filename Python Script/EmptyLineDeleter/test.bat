@@ -1,1 +1,0 @@
-python remove_blank_lines.py test.txt
