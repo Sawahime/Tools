@@ -1,26 +1,40 @@
-## Start the Test Server (in terminal):
+单端口测试
+------------
 
-```bash
-python tcp_test_server.py
-```
+### 功能说明
 
-(Default: runs on port 8080)
+* **目的**：测试指定IP地址的**单个端口**是否开放
+* **工作原理**：尝试建立TCP连接，检查连接是否成功
+* **连接行为**：连接成功后**立即断开**
 
-#### 2. In the GUI Tool:
+### 使用场景
 
-1. Switch to "TCP Test" tab  
-2. Enter:  
-   - IP: `127.0.0.1` (for local testing)  
-   - Port: `8080`  
-3. Buttons:  
-   - **Test Connection**: Checks basic connectivity  
-   - **Send Data**: Sends custom text and shows server reply  
+✅ 检查特定服务是否在线
+✅ 验证防火墙配置
+✅ 快速连通性测试
+✅ 服务可用性检查
 
-#### 3. Expected Output:
+端口扫描
+-----------
 
-- Server echoes all messages with timestamp  
-- Example:  
-  You send: `hello`  
-  Server replies: `ECHO[1623456789]: hello`  
+### 功能说明
+
+* **目的**：扫描指定IP地址的**端口范围**，找出所有开放的端口
+* **工作原理**：依次测试范围内的每个端口
+* **扫描策略**：只显示开放的端口，跳过关闭的端口
+
+### 使用场景
+
+✅ 发现目标主机运行的服务
+✅ 安全评估和渗透测试
+✅ 网络资产清点
+✅ 服务发现
+
+
+
+## 对比总结
+
+* 知道要测试什么 → 单端口测试
+* 想发现有什么服务 → 端口扫描
 
 
