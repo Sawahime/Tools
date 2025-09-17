@@ -23,12 +23,9 @@ class ImageConverter(QMainWindow):
     def __init__(self):
         super().__init__()
         self.supported_formats = {
-            "PNG": ".png",
             "JPEG": ".jpg",
+            "PNG": ".png",
             "ICO": ".ico",
-            # "BMP": ".bmp",
-            # "GIF": ".gif",
-            # "TIFF": ".tiff",
         }
         self.conversion_functions = {
             ("PNG", "ICO"): self.convert_png2ico,
@@ -147,6 +144,17 @@ class ImageConverter(QMainWindow):
             if ext == fmt_ext.lower():
                 return fmt
         return None
+
+    # 拖放支持
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent):
+        urls = event.mimeData().urls()
+        if urls:
+            file_path = urls[0].toLocalFile()
+            self.set_input_file(file_path)
 
     def set_input_file(self, file_path):
         source_format = self.detect_format(file_path)
@@ -299,17 +307,6 @@ class ImageConverter(QMainWindow):
         # 保存为JPEG格式，可以设置质量参数（0-100，默认75）
         img.save(output_file, format="JPEG", quality=100)
         self.progress_bar.setValue(100)
-
-    # 拖放支持
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event: QDropEvent):
-        urls = event.mimeData().urls()
-        if urls:
-            file_path = urls[0].toLocalFile()
-            self.set_input_file(file_path)
 
 
 if __name__ == "__main__":
