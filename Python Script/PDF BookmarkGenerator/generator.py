@@ -345,7 +345,7 @@ class BookmarkGenerator(QMainWindow):
         for i in range(parent_item.childCount()):
             item = parent_item.child(i)
             title = item.text(0)
-            page_num = int(item.text(1)) + offset - 1  # PDF页码从0开始
+            page_num = int(item.text(1)) + offset
 
             # 确保页码在有效范围内
             page_num = max(0, page_num)
