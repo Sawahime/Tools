@@ -1,0 +1,298 @@
+ctrl_interface=/var/run/wpa_supplicant
+eapol_version=1
+ap_scan=1
+fast_reauth=1
+network={
+	ssid="simple"
+	psk="very secret passphrase"
+	priority=5
+}
+network={
+	ssid="second ssid"
+	scan_ssid=1
+	psk="very secret passphrase"
+	priority=2
+}
+network={
+	ssid="example"
+	proto=WPA
+	key_mgmt=WPA-PSK
+	pairwise=CCMP TKIP
+	group=CCMP TKIP WEP104 WEP40
+	psk=06b4be19da289f475aa46a33cb793029d4ab3db7a23ee92382eb0106c72ac7bb
+	priority=2
+}
+network={
+	ssid="example"
+	proto=WPA
+	key_mgmt=WPA-PSK
+	pairwise=TKIP
+	group=TKIP
+	psk="not so secure passphrase"
+	wpa_ptk_rekey=600
+}
+network={
+	ssid="example"
+	proto=RSN
+	key_mgmt=WPA-EAP
+	pairwise=CCMP TKIP
+	group=CCMP TKIP
+	eap=TLS
+	identity="user@example.com"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="/etc/cert/user.pem"
+	private_key="/etc/cert/user.prv"
+	private_key_passwd="password"
+	priority=1
+}
+network={
+	ssid="example"
+	key_mgmt=WPA-EAP
+	eap=PEAP
+	identity="user@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	phase1="peaplabel=1"
+	phase2="auth=MSCHAPV2"
+	priority=10
+}
+network={
+	ssid="example"
+	key_mgmt=WPA-EAP
+	eap=TTLS
+	identity="user@example.com"
+	anonymous_identity="anonymous@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	priority=2
+}
+network={
+	ssid="example"
+	key_mgmt=WPA-EAP
+	eap=TTLS
+	identity="user@example.com"
+	anonymous_identity="anonymous@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	phase2="auth=MSCHAPV2"
+}
+network={
+	ssid="example"
+	key_mgmt=WPA-EAP
+	eap=TTLS
+	anonymous_identity="anonymous@example.com"
+	ca_cert="/etc/cert/ca.pem"
+	phase2="autheap=TLS"
+	ca_cert2="/etc/cert/ca2.pem"
+	client_cert2="/etc/cer/user.pem"
+	private_key2="/etc/cer/user.prv"
+	private_key2_passwd="password"
+	priority=2
+}
+network={
+	ssid="example"
+	bssid=00:11:22:33:44:55
+	proto=WPA RSN
+	key_mgmt=WPA-PSK WPA-EAP
+	pairwise=CCMP
+	group=CCMP
+	psk=06b4be19da289f475aa46a33cb793029d4ab3db7a23ee92382eb0106c72ac7bb
+}
+network={
+	ssid=00010203
+	psk=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+}
+network={
+	ssid="eap-sim-test"
+	key_mgmt=WPA-EAP
+	eap=SIM
+	pin="1234"
+	pcsc=""
+}
+network={
+	ssid="eap-psk-test"
+	key_mgmt=WPA-EAP
+	eap=PSK
+	anonymous_identity="eap_psk_user"
+	password=06b4be19da289f475aa46a33cb793029
+	identity="eap_psk_user@example.com"
+}
+network={
+	ssid="1x-test"
+	key_mgmt=IEEE8021X
+	eap=TLS
+	identity="user@example.com"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="/etc/cert/user.pem"
+	private_key="/etc/cert/user.prv"
+	private_key_passwd="password"
+	eapol_flags=3
+}
+network={
+	ssid="leap-example"
+	key_mgmt=IEEE8021X
+	eap=LEAP
+	identity="user"
+	password="foobar"
+}
+network={
+	ssid="ikev2-example"
+	key_mgmt=WPA-EAP
+	eap=IKEV2
+	identity="user"
+	password="foobar"
+}
+network={
+	ssid="eap-fast-test"
+	key_mgmt=WPA-EAP
+	eap=FAST
+	anonymous_identity="FAST-000102030405"
+	identity="username"
+	password="password"
+	phase1="fast_provisioning=1"
+	pac_file="/etc/wpa_supplicant.eap-fast-pac"
+}
+network={
+	ssid="eap-fast-test"
+	key_mgmt=WPA-EAP
+	eap=FAST
+	anonymous_identity="FAST-000102030405"
+	identity="username"
+	password="password"
+	phase1="fast_provisioning=1"
+	pac_file="blob://eap-fast-pac"
+}
+network={
+	ssid="plaintext-test"
+	key_mgmt=NONE
+}
+network={
+	ssid="static-wep-test"
+	key_mgmt=NONE
+	wep_key0="abcde"
+	wep_key1=0102030405
+	wep_key2="1234567890123"
+	wep_tx_keyidx=0
+	priority=5
+}
+network={
+	ssid="static-wep-test2"
+	key_mgmt=NONE
+	wep_key0="abcde"
+	wep_key1=0102030405
+	wep_key2="1234567890123"
+	wep_tx_keyidx=0
+	priority=5
+	auth_alg=SHARED
+}
+network={
+	ssid="ibss-rsn"
+	key_mgmt=WPA-PSK
+	proto=RSN
+	psk="12345678"
+	mode=1
+	frequency=2412
+	pairwise=CCMP
+	group=CCMP
+}
+network={
+	ssid="test adhoc"
+	mode=1
+	frequency=2412
+	proto=WPA
+	key_mgmt=WPA-NONE
+	pairwise=NONE
+	group=TKIP
+	psk="secret passphrase"
+}
+network={
+	ssid="test mesh"
+	mode=5
+	frequency=2437
+	key_mgmt=NONE
+}
+network={
+	ssid="secure mesh"
+	mode=5
+	frequency=2437
+	key_mgmt=SAE
+	psk="very secret passphrase"
+}
+network={
+	ssid="example"
+	scan_ssid=1
+	key_mgmt=WPA-EAP WPA-PSK IEEE8021X NONE
+	pairwise=CCMP TKIP
+	group=CCMP TKIP WEP104 WEP40
+	psk="very secret passphrase"
+	eap=TTLS PEAP TLS
+	identity="user@example.com"
+	password="foobar"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="/etc/cert/user.pem"
+	private_key="/etc/cert/user.prv"
+	private_key_passwd="password"
+	phase1="peaplabel=0"
+}
+network={
+	ssid="example"
+	key_mgmt=WPA-EAP
+	eap=TLS
+	proto=RSN
+	pairwise=CCMP TKIP
+	group=CCMP TKIP
+	identity="user@example.com"
+	ca_cert="/etc/cert/ca.pem"
+	client_cert="pkcs11:manufacturer=piv_II;id=%01"
+	private_key="pkcs11:manufacturer=piv_II;id=%01"
+	pin="1234"
+}
+network={
+	ssid="example"
+	key_mgmt=WPA-EAP
+	eap=TTLS
+	identity="user@example.com"
+	anonymous_identity="anonymous@example.com"
+	password="foobar"
+	ca_cert="blob://exampleblob"
+	priority=20
+}
+blob-base64-exampleblob={
+SGVsbG8gV29ybGQhCg==
+}
+network={
+	key_mgmt=NONE
+}
+network={
+	ssid="example"
+	psk="very secret passphrase"
+	bssid_ignore=02:11:22:33:44:55 02:22:aa:44:55:66
+}
+network={
+	ssid="example"
+	psk="very secret passphrase"
+	bssid_accept=02:55:ae:bc:00:00/ff:ff:ff:ff:00:00 00:00:77:66:55:44/00:00:ff:ff:ff:ff
+}
+freq_list=5180
+network={
+	key_mgmt=NONE
+}
+network={
+	key_mgmt=IEEE8021X
+	eap=TTLS
+	phase2="auth=PAP"
+	anonymous_identity="anonymous@example.com"
+	identity="user@example.com"
+	password="secretr"
+	ca_cert="/etc/cert/ca.pem"
+	eapol_flags=0
+	macsec_policy=1
+}
+network={
+	key_mgmt=NONE
+	eapol_flags=0
+	macsec_policy=1
+	mka_cak=0123456789ABCDEF0123456789ABCDEF
+	mka_ckn=6162636465666768696A6B6C6D6E6F707172737475767778797A303132333435
+	mka_priority=128
+}
