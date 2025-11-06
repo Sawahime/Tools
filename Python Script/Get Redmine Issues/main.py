@@ -1,0 +1,124 @@
+import requests
+import json
+from datetime import datetime
+
+
+class RedmineClient:
+    def __init__(self, base_url):
+        self.base_url = base_url.rstrip('/')
+
+    def get_issues(self, limit=100, offset=0):
+        """
+        获取issues数据，支持分页
+        """
+        url = f"{self.base_url}/issues.json"
+        params = {
+            'limit': limit,
+            'offset': offset
+        }
+
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"请求错误: {e}")
+            return None
+
+    def display_issues(self, issues_data):
+        """
+        格式化显示issues数据
+        """
+        if not issues_data:
+            print("没有获取到数据")
+            return
+
+        issues = issues_data.get('issues', [])
+        total_count = issues_data.get('total_count', 0)
+        offset = issues_data.get('offset', 0)
+        limit = issues_data.get('limit', 0)
+
+        print("=" * 100)
+        print(f"Redmine Issues (显示 {len(issues)}/{total_count} 个)")
+        print("=" * 100)
+
+        for i, issue in enumerate(issues, 1):
+            self.print_issue(issue, i + offset)
+
+    def print_issue(self, issue, number):
+        """
+        打印单个issue的详细信息
+        """
+        print(f"\n{number}. 问题 #{issue.get('id', 'N/A')}")
+        print(f"   📌 主题: {issue.get('subject', 'N/A')}")
+        print(f"   📊 状态: {issue.get('status', {}).get('name', 'N/A')}")
+        print(f"   ⚡ 优先级: {issue.get('priority', {}).get('name', 'N/A')}")
+        print(f"   👤 作者: {issue.get('author', {}).get('name', 'N/A')}")
+
+        # 分配人员（如果有）
+        assigned_to = issue.get('assigned_to', {})
+        if assigned_to:
+            print(f"   ✅ 分配给: {assigned_to.get('name', 'N/A')}")
+
+        print(f"   📅 创建时间: {self.format_date(issue.get('created_on', 'N/A'))}")
+        print(f"   🔄 更新时间: {self.format_date(issue.get('updated_on', 'N/A'))}")
+
+        # 项目信息
+        project = issue.get('project', {})
+        if project:
+            print(f"   📁 项目: {project.get('name', 'N/A')}")
+
+        # 跟踪类型
+        tracker = issue.get('tracker', {})
+        if tracker:
+            print(f"   🏷️  类型: {tracker.get('name', 'N/A')}")
+
+        # 描述信息
+        description = issue.get('description', '')
+        if description:
+            desc_preview = description[:150] + "..." if len(description) > 150 else description
+            print(f"   📝 描述: {desc_preview}")
+
+        print("-" * 80)
+
+    def format_date(self, date_string):
+        """
+        格式化日期字符串
+        """
+        if date_string == 'N/A':
+            return 'N/A'
+
+        try:
+            date_obj = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            return date_obj.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            return date_string
+
+
+def main():
+    """
+    主函数
+    """
+    # 配置Redmine服务器地址
+    redmine_url = "http://192.168.3.202:3000"
+
+    # 创建Redmine客户端
+    client = RedmineClient(redmine_url)
+
+    print("🔍 正在从Redmine服务器获取issues数据...")
+
+    # 获取issues数据
+    issues_data = client.get_issues(limit=50)  # 限制获取50条记录
+
+    if issues_data:
+        # 显示issues数据
+        client.display_issues(issues_data)
+    else:
+        print("❌ 获取数据失败，请检查：")
+        print("   1. Redmine服务器是否运行")
+        print("   2. 网络连接是否正常")
+        print("   3. 服务器地址是否正确")
+
+
+if __name__ == "__main__":
+    main()
