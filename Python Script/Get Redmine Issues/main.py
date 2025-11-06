@@ -25,6 +25,41 @@ class RedmineClient:
             print(f"请求错误: {e}")
             return None
 
+    def get_issues_by_assignee(self, assignee_name, limit=100, offset=0):
+        """
+        根据分配人员筛选issues
+        """
+        url = f"{self.base_url}/issues.json"
+        params = {
+            'limit': limit,
+            'offset': offset,
+            'assigned_to_id': '*'  # 获取所有分配的任务
+        }
+
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            # 筛选指定分配人员的issues
+            filtered_issues = []
+            for issue in data.get('issues', []):
+                assigned_to = issue.get('assigned_to', {})
+                if assigned_to and assigned_to.get('name') == assignee_name:
+                    filtered_issues.append(issue)
+
+            # 构建返回数据格式
+            return {
+                'issues': filtered_issues,
+                'total_count': len(filtered_issues),
+                'offset': offset,
+                'limit': limit
+            }
+
+        except requests.exceptions.RequestException as e:
+            print(f"请求错误: {e}")
+            return None
+
     def display_issues(self, issues_data):
         """
         格式化显示issues数据
@@ -105,10 +140,13 @@ def main():
     # 创建Redmine客户端
     client = RedmineClient(redmine_url)
 
+    # 指定要筛选的分配人员
+    assignee_name = "毅 陆"
+
     print("🔍 正在从Redmine服务器获取issues数据...")
 
-    # 获取issues数据
-    issues_data = client.get_issues(limit=50)  # 限制获取50条记录
+    # 获取指定分配人员的issues数据
+    issues_data = client.get_issues_by_assignee(assignee_name)
 
     if issues_data:
         # 显示issues数据
