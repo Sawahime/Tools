@@ -59,50 +59,7 @@ class RedmineClient:
             print(f"请求错误: {e}")
             return None
 
-    def get_issues_as_structures(self, limit=100, offset=0):
-        """
-        获取IssueInfo对象列表
-        """
-        issues_data = self.get_issues(limit, offset)
-        if not issues_data:
-            return []
-
-        issues_info = []
-        for issue in issues_data.get('issues', []):
-            # 处理分配人员
-            assigned_to = issue.get('assigned_to', {})
-            assigned_to_name = assigned_to.get('name') if assigned_to else None
-
-            # 处理项目
-            project = issue.get('project', {})
-            project_name = project.get('name', 'N/A')
-
-            # 处理跟踪类型
-            tracker = issue.get('tracker', {})
-            tracker_name = tracker.get('name', 'N/A')
-
-            # 创建IssueInfo对象
-            issue_info = IssueInfo(
-                id=issue.get('id', 0),
-                subject=issue.get('subject', 'N/A'),
-                status=issue.get('status', {}).get('name', 'N/A'),
-                priority=issue.get('priority', {}).get('name', 'N/A'),
-                author=issue.get('author', {}).get('name', 'N/A'),
-                assigned_to=assigned_to_name,
-                created_on=self.format_date(issue.get('created_on', 'N/A')),
-                updated_on=self.format_date(issue.get('updated_on', 'N/A')),
-                start_date=issue.get('start_date'),
-                due_date=issue.get('due_date'),
-                done_ratio=issue.get('done_ratio', 0),
-                project=project_name,
-                tracker=tracker_name,
-                description=issue.get('description', '')
-            )
-            issues_info.append(issue_info)
-
-        return issues_info
-
-    def get_issues_as_structures_by_assignee(self, assignee_name, limit=100, offset=0):
+    def get_issues_as_dict_by_assignee(self, assignee_name, limit=100, offset=0):
         """
         根据分配人员获取IssueInfo对象列表
         """
@@ -252,7 +209,7 @@ def main():
 def get_issues_cpp_intf():
     redmine_url = "http://192.168.3.202:3000"
     client = RedmineClient(redmine_url)
-    return client.get_issues_as_structures_by_assignee(assignee_name="毅 陆")
+    return client.get_issues_as_dict_by_assignee(assignee_name="毅 陆")
 
 
 def test():
