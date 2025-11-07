@@ -98,6 +98,19 @@ class RedmineClient:
         print(f"   📅 创建时间: {self.format_date(issue.get('created_on', 'N/A'))}")
         print(f"   🔄 更新时间: {self.format_date(issue.get('updated_on', 'N/A'))}")
 
+        # 计划开始时间和结束时间
+        start_date = issue.get('start_date', '')
+        if start_date:
+            print(f"   🗓️  计划开始: {start_date}")
+
+        due_date = issue.get('due_date', '')
+        if due_date:
+            print(f"   📋 计划完成: {due_date}")
+
+        # 进度（完成百分比）
+        done_ratio = issue.get('done_ratio', 0)
+        print(f"   📈 进度: {done_ratio}%")
+
         # 项目信息
         project = issue.get('project', {})
         if project:
