@@ -1,26 +1,5 @@
 import requests
 from datetime import datetime
-from dataclasses import dataclass
-from typing import Optional
-
-
-@dataclass
-class IssueInfo:
-    """Issue信息结构体"""
-    id: int
-    subject: str
-    status: str
-    priority: str
-    author: str
-    assigned_to: Optional[str]
-    created_on: str
-    updated_on: str
-    start_date: Optional[str]
-    due_date: Optional[str]
-    done_ratio: int
-    project: str
-    tracker: str
-    description: str
 
 
 class RedmineClient:
