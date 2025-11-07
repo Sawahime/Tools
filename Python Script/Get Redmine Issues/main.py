@@ -1,6 +1,26 @@
 import requests
-import json
 from datetime import datetime
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class IssueInfo:
+    """Issue信息结构体"""
+    id: int
+    subject: str
+    status: str
+    priority: str
+    author: str
+    assigned_to: Optional[str]
+    created_on: str
+    updated_on: str
+    start_date: Optional[str]
+    due_date: Optional[str]
+    done_ratio: int
+    project: str
+    tracker: str
+    description: str
 
 
 class RedmineClient:
@@ -59,6 +79,92 @@ class RedmineClient:
         except requests.exceptions.RequestException as e:
             print(f"请求错误: {e}")
             return None
+
+    def get_issues_as_structures(self, limit=100, offset=0):
+        """
+        获取IssueInfo对象列表
+        """
+        issues_data = self.get_issues(limit, offset)
+        if not issues_data:
+            return []
+
+        issues_info = []
+        for issue in issues_data.get('issues', []):
+            # 处理分配人员
+            assigned_to = issue.get('assigned_to', {})
+            assigned_to_name = assigned_to.get('name') if assigned_to else None
+
+            # 处理项目
+            project = issue.get('project', {})
+            project_name = project.get('name', 'N/A')
+
+            # 处理跟踪类型
+            tracker = issue.get('tracker', {})
+            tracker_name = tracker.get('name', 'N/A')
+
+            # 创建IssueInfo对象
+            issue_info = IssueInfo(
+                id=issue.get('id', 0),
+                subject=issue.get('subject', 'N/A'),
+                status=issue.get('status', {}).get('name', 'N/A'),
+                priority=issue.get('priority', {}).get('name', 'N/A'),
+                author=issue.get('author', {}).get('name', 'N/A'),
+                assigned_to=assigned_to_name,
+                created_on=self.format_date(issue.get('created_on', 'N/A')),
+                updated_on=self.format_date(issue.get('updated_on', 'N/A')),
+                start_date=issue.get('start_date'),
+                due_date=issue.get('due_date'),
+                done_ratio=issue.get('done_ratio', 0),
+                project=project_name,
+                tracker=tracker_name,
+                description=issue.get('description', '')
+            )
+            issues_info.append(issue_info)
+
+        return issues_info
+
+    def get_issues_as_structures_by_assignee(self, assignee_name, limit=100, offset=0):
+        """
+        根据分配人员获取IssueInfo对象列表
+        """
+        issues_data = self.get_issues_by_assignee(assignee_name, limit, offset)
+        if not issues_data:
+            return []
+
+        issues_info = []
+        for issue in issues_data.get('issues', []):
+            # 处理分配人员
+            assigned_to = issue.get('assigned_to', {})
+            assigned_to_name = assigned_to.get('name') if assigned_to else None
+
+            # 处理项目
+            project = issue.get('project', {})
+            project_name = project.get('name', 'N/A')
+
+            # 处理跟踪类型
+            tracker = issue.get('tracker', {})
+            tracker_name = tracker.get('name', 'N/A')
+
+            # 创建IssueInfo对象
+            issue_info = IssueInfo(
+                id=issue.get('id', 0),
+                subject=issue.get('subject', 'N/A'),
+                status=issue.get('status', {}).get('name', 'N/A'),
+                priority=issue.get('priority', {}).get('name', 'N/A'),
+                author=issue.get('author', {}).get('name', 'N/A'),
+                assigned_to=assigned_to_name,
+                created_on=self.format_date(issue.get('created_on', 'N/A')),
+                updated_on=self.format_date(issue.get('updated_on', 'N/A')),
+                start_date=issue.get('start_date'),
+                due_date=issue.get('due_date'),
+                done_ratio=issue.get('done_ratio', 0),
+                project=project_name,
+                tracker=tracker_name,
+                description=issue.get('description', '')
+            )
+            issues_info.append(issue_info)
+
+        return issues_info
 
     def display_issues(self, issues_data):
         """
@@ -153,16 +259,10 @@ def main():
     # 创建Redmine客户端
     client = RedmineClient(redmine_url)
 
-    # 指定要筛选的分配人员
-    assignee_name = "毅 陆"
-
     print("🔍 正在从Redmine服务器获取issues数据...")
-
-    # 获取指定分配人员的issues数据
-    issues_data = client.get_issues_by_assignee(assignee_name)
+    issues_data = client.get_issues_by_assignee(assignee_name="毅 陆")
 
     if issues_data:
-        # 显示issues数据
         client.display_issues(issues_data)
     else:
         print("❌ 获取数据失败，请检查：")
@@ -171,5 +271,49 @@ def main():
         print("   3. 服务器地址是否正确")
 
 
+def test():
+    redmine_url = "http://192.168.3.202:3000"
+    client = RedmineClient(redmine_url)
+
+    # 获取指定分配人员的issues结构体列表
+    issues = client.get_issues_as_structures_by_assignee(assignee_name="毅 陆")
+
+    print(f"🔍 分配给【毅 陆】的issues (总计: {len(issues)} 个)")
+    print("=" * 100)
+
+    # 打印每个issue的详细信息
+    for i, issue in enumerate(issues, 1):
+        print(f"\n{i}. 问题 #{issue.id}")
+        print(f"   📌 主题: {issue.subject}")
+        print(f"   📊 状态: {issue.status}")
+        print(f"   ⚡ 优先级: {issue.priority}")
+        print(f"   👤 作者: {issue.author}")
+        print(f"   ✅ 分配给: {issue.assigned_to or '未分配'}")
+        print(f"   📈 进度: {issue.done_ratio}%")
+        print(f"   📅 创建时间: {issue.created_on}")
+        print(f"   🔄 更新时间: {issue.updated_on}")
+
+        if issue.start_date:
+            print(f"   🗓️  计划开始: {issue.start_date}")
+        if issue.due_date:
+            print(f"   📋 计划完成: {issue.due_date}")
+
+        print(f"   📁 项目: {issue.project}")
+        print(f"   🏷️  类型: {issue.tracker}")
+
+        if issue.description:
+            desc_preview = issue.description[:150] + "..." if len(issue.description) > 150 else issue.description
+            print(f"   📝 描述: {desc_preview}")
+
+        print("-" * 80)
+
+
+def get_issues_cpp_intf():
+    redmine_url = "http://192.168.3.202:3000"
+    client = RedmineClient(redmine_url)
+    return client.get_issues_as_structures_by_assignee(assignee_name="毅 陆")
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    test()
