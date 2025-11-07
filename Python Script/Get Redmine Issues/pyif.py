@@ -131,7 +131,7 @@ class RedmineClient:
         if not issues_data:
             return []
 
-        issues_dict = []
+        issues_info = []
         for issue in issues_data.get('issues', []):
             # 处理分配人员
             assigned_to = issue.get('assigned_to', {})
@@ -145,6 +145,25 @@ class RedmineClient:
             tracker = issue.get('tracker', {})
             tracker_name = tracker.get('name', 'N/A')
 
+            # 创建IssueInfo对象
+            issue_info = IssueInfo(
+                id=issue.get('id', 0),
+                subject=issue.get('subject', 'N/A'),
+                status=issue.get('status', {}).get('name', 'N/A'),
+                priority=issue.get('priority', {}).get('name', 'N/A'),
+                author=issue.get('author', {}).get('name', 'N/A'),
+                assigned_to=assigned_to_name,
+                created_on=self.format_date(issue.get('created_on', 'N/A')),
+                updated_on=self.format_date(issue.get('updated_on', 'N/A')),
+                start_date=issue.get('start_date'),
+                due_date=issue.get('due_date'),
+                done_ratio=issue.get('done_ratio', 0),
+                project=project_name,
+                tracker=tracker_name,
+                description=issue.get('description', '')
+            )
+            issues_info.append(issue_info)
+
             issue_dict = {
                 'id': issue.get('id', 0),
                 'subject': issue.get('subject', 'N/A'),
@@ -157,13 +176,12 @@ class RedmineClient:
                 'start_date': issue.get('start_date'),
                 'due_date': issue.get('due_date'),
                 'done_ratio': issue.get('done_ratio', 0),
-                'project': project_name,
-                'tracker': tracker_name,
+                'project': issue.project_name,
+                'tracker': issue.tracker_name,
                 'description': issue.get('description', '')
             }
-            issues_dict.append(issue_dict)
 
-        return issues_dict
+        return issues_info
 
     def display_issues(self, issues_data):
         """
@@ -270,44 +288,70 @@ def main():
         print("   3. 服务器地址是否正确")
 
 
-def get_issues_cpp_intf():
+def test():
     redmine_url = "http://192.168.3.202:3000"
     client = RedmineClient(redmine_url)
-    return client.get_issues_as_structures_by_assignee(assignee_name="毅 陆")
 
-
-def test():
-    issues = get_issues_cpp_intf()
+    # 获取指定分配人员的issues结构体列表
+    issues = client.get_issues_as_structures_by_assignee(assignee_name="毅 陆")
 
     print(f"🔍 分配给【毅 陆】的issues (总计: {len(issues)} 个)")
     print("=" * 100)
 
     # 打印每个issue的详细信息
     for i, issue in enumerate(issues, 1):
-        print(f"\n{i}. 问题 #{issue['id']}")
-        print(f"   📌 主题: {issue['subject']}")
-        print(f"   📊 状态: {issue['status']}")
-        print(f"   ⚡ 优先级: {issue['priority']}")
-        print(f"   👤 作者: {issue['author']}")
-        print(f"   ✅ 分配给: {issue['assigned_to'] or '未分配'}")
-        print(f"   📈 进度: {issue['done_ratio']}%")
-        print(f"   📅 创建时间: {issue['created_on']}")
-        print(f"   🔄 更新时间: {issue['updated_on']}")
+        print(f"\n{i}. 问题 #{issue.id}")
+        print(f"   📌 主题: {issue.subject}")
+        print(f"   📊 状态: {issue.status}")
+        print(f"   ⚡ 优先级: {issue.priority}")
+        print(f"   👤 作者: {issue.author}")
+        print(f"   ✅ 分配给: {issue.assigned_to or '未分配'}")
+        print(f"   📈 进度: {issue.done_ratio}%")
+        print(f"   📅 创建时间: {issue.created_on}")
+        print(f"   🔄 更新时间: {issue.updated_on}")
 
-        if issue['start_date']:
-            print(f"   🗓️  计划开始: {issue['start_date']}")
-        if issue['due_date']:
-            print(f"   📋 计划完成: {issue['due_date']}")
+        if issue.start_date:
+            print(f"   🗓️  计划开始: {issue.start_date}")
+        if issue.due_date:
+            print(f"   📋 计划完成: {issue.due_date}")
 
-        print(f"   📁 项目: {issue['project']}")
-        print(f"   🏷️  类型: {issue['tracker']}")
+        print(f"   📁 项目: {issue.project}")
+        print(f"   🏷️  类型: {issue.tracker}")
 
-        if issue['description']:
-            desc_preview = issue['description'][:150] + \
-                "..." if len(issue['description']) > 150 else issue['description']
+        if issue.description:
+            desc_preview = issue.description[:150] + "..." if len(issue.description) > 150 else issue.description
             print(f"   📝 描述: {desc_preview}")
 
         print("-" * 80)
+
+
+def get_issues_cpp_intf():
+    redmine_url = "http://192.168.3.202:3000"
+    client = RedmineClient(redmine_url)
+    issues = client.get_issues_as_structures_by_assignee(assignee_name="毅 陆")
+
+    # 将IssueInfo对象转换为字典列表，便于C++处理
+    issues_data = []
+    for issue in issues:
+        issue_dict = {
+            'id': issue.id,
+            'subject': issue.subject,
+            'status': issue.status,
+            'priority': issue.priority,
+            'author': issue.author,
+            'assigned_to': issue.assigned_to or "",
+            'created_on': issue.created_on,
+            'updated_on': issue.updated_on,
+            'start_date': issue.start_date or "",
+            'due_date': issue.due_date or "",
+            'done_ratio': issue.done_ratio,
+            'project': issue.project,
+            'tracker': issue.tracker,
+            'description': issue.description
+        }
+        issues_data.append(issue_dict)
+
+    return issues_data
 
 
 if __name__ == "__main__":
