@@ -7,13 +7,10 @@ class RedmineClient:
         self.base_url = base_url.rstrip('/')
 
     def get_issues(self, limit=100, offset=0):
-        """
-        获取issues数据，支持分页
-        """
         url = f"{self.base_url}/issues.json"
         params = {
-            'limit': limit,
-            'offset': offset
+            'limit': limit,  # 最多获取limit条issues
+            'offset': offset  # 从第offset条开始
         }
 
         try:
@@ -24,46 +21,71 @@ class RedmineClient:
             print(f"请求错误: {e}")
             return None
 
-    def get_issues_by_assignee(self, assignee_name, limit=100, offset=0):
-        """
-        根据分配人员筛选issues
-        """
-        url = f"{self.base_url}/issues.json"
-        params = {
-            'limit': limit,
-            'offset': offset,
-            'assigned_to_id': '*'  # 获取所有分配的任务
+    def get_all_issues(self):
+        all_issues = []
+        limit = 100  # 每次请求的最大数量
+        offset = 0
+
+        while True:
+            issues_data = self.get_issues(limit=limit, offset=offset)
+            if not issues_data:
+                break
+
+            issues = issues_data.get('issues', [])
+            if not issues:
+                break
+
+            all_issues.extend(issues)
+
+            # 检查是否已经获取了所有数据
+            total_count = issues_data.get('total_count', 0)
+            if len(all_issues) >= total_count:
+                break
+
+            offset += len(issues)
+
+        # 返回与原始get_issues相同的格式
+        return {
+            'issues': all_issues,
+            'total_count': len(all_issues),
+            'offset': 0,
+            'limit': len(all_issues)
         }
 
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+    def get_all_issues_by_assignee(self, assignee_name):
+        all_issues = []
+        limit = 100
+        offset = 0
 
-            # 筛选指定分配人员的issues
-            filtered_issues = []
-            for issue in data.get('issues', []):
+        while True:
+            issues_data = self.get_issues(limit=limit, offset=offset)
+            if not issues_data:
+                break
+
+            issues = issues_data.get('issues', [])
+            if not issues:
+                break
+
+            for issue in issues:
                 assigned_to = issue.get('assigned_to', {})
                 if assigned_to and assigned_to.get('name') == assignee_name:
-                    filtered_issues.append(issue)
+                    all_issues.append(issue)
 
-            # 构建返回数据格式
-            return {
-                'issues': filtered_issues,
-                'total_count': len(filtered_issues),
-                'offset': offset,
-                'limit': limit
-            }
+            if len(issues) < limit:  # 当前批次不满limit，说明是最后一页
+                break
 
-        except requests.exceptions.RequestException as e:
-            print(f"请求错误: {e}")
-            return None
+            offset += len(issues)
 
-    def get_issues_as_dict_by_assignee(self, assignee_name, limit=100, offset=0):
+        return {
+            'issues': all_issues,
+            'total_count': len(all_issues),
+        }
+
+    def get_all_issues_by_assignee_as_dict(self, assignee_name):
         """
         根据分配人员获取IssueInfo对象列表
         """
-        issues_data = self.get_issues_by_assignee(assignee_name, limit, offset)
+        issues_data = self.get_all_issues_by_assignee(assignee_name)
         if not issues_data:
             return []
 
@@ -115,7 +137,7 @@ class RedmineClient:
         limit = issues_data.get('limit', 0)
 
         print("=" * 100)
-        print(f"Redmine Issues (显示 {len(issues)}/{total_count} 个)")
+        print(f"Redmine Issues (显示 {len(issues)}/{total_count} 个), offset={offset}, limit={limit}")
         print("=" * 100)
 
         for i, issue in enumerate(issues, 1):
@@ -185,17 +207,11 @@ class RedmineClient:
 
 
 def main():
-    """
-    主函数
-    """
-    # 配置Redmine服务器地址
     redmine_url = "http://192.168.3.202:3000"
-
-    # 创建Redmine客户端
     client = RedmineClient(redmine_url)
-
     print("🔍 正在从Redmine服务器获取issues数据...")
-    issues_data = client.get_issues_by_assignee(assignee_name="毅 陆")
+    issues_data = client.get_all_issues_by_assignee(assignee_name="毅 陆")
+    # issues_data = client.get_all_issues()
 
     if issues_data:
         client.display_issues(issues_data)
@@ -209,7 +225,7 @@ def main():
 def get_issues_cpp_intf():
     redmine_url = "http://192.168.3.202:3000"
     client = RedmineClient(redmine_url)
-    return client.get_issues_as_dict_by_assignee(assignee_name="毅 陆")
+    return client.get_all_issues_by_assignee_as_dict(assignee_name="毅 陆")
 
 
 def test():
